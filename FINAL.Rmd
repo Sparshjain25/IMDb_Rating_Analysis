@@ -1,0 +1,556 @@
+---
+title: "Regression Analysis of IMDB 5000 Movies Datasets"
+date: "2022-12-10"
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 4
+    citation_package: natbib
+    fig_caption: yes
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+    css: style.css
+fontsize: 14pt
+biblio-style: chicago
+bibliography: lab.bib
+---
+
+\pagenumbering{arabic}
+
+```{r setup, include=FALSE}
+library(MASS)
+library(car)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+# Purpose
+
+By doing a regression analysis, we want to know:
+1) Among the 27 variables given, which of them are critical in telling the IMDB rating of a movie.
+2) Is there any correlation between genre & IMDB raging,face number in poster & IMDB rating,director name & IMDB rating and duration & IMDB rating.
+3) Predict the IMDB Score using our model
+
+```{r echo=FALSE}
+library(priceR)
+library(psych)
+library(car)
+library(RColorBrewer) 
+library(corrplot)
+library(ggplot2)
+library(dplyr)
+library(stringr)
+```
+
+```{r echo=FALSE}
+m<- read.csv('C:\\Users\\Kueen\\Downloads\\movie_metadata.csv')
+```
+
+
+# Step 1: Data Collection 
+
+This data set was found from Kaggle. The author scraped 5000+ movies from IMDB website using a Python library called "scrapy" and obtain all needed 28 variables for 5043 movies and 4906 posters (998MB), spanning across 100 years in 66 countries. There are 2399 unique director names, and thousands of actors/actresses. Below are the 28 variables:
+"movie_title" "color" "num_critic_for_reviews" "movie_facebook_likes" "duration" "director_name" "director_facebook_likes" "actor_3_name" "actor_3_facebook_likes" "actor_2_name" "actor_2_facebook_likes" "actor_1_name" "actor_1_facebook_likes" "gross" "genres" "num_voted_users" "cast_total_facebook_likes" "facenumber_in_poster" "plot_keywords" "movie_imdb_link" "num_user_for_reviews" "language" "country" "content_rating" "budget" "title_year" "imdb_score" "aspect_ratio"
+
+This dataset is a proof of concept. It can be used for experimental and learning purpose.For comprehensive movie analysis and accurate movie ratings prediction, 28 attributes from 5000 movies might not be enough. A decent dataset could contain hundreds of attributes from 50K or more movies, and requires tons of feature engineering.
+
+# Step 2: Data cleaning and exploration
+
+```{r echo=FALSE}
+movie.usa<-m[which(m[,'country']=='USA'),]
+# Delete duplicate rows (45) 
+movie.usa <- movie.usa[!duplicated(movie.usa), ]
+movie.usa$genres <- str_extract(as.character(movie.usa$genres), ".+?(?=\\|)")
+movie.usa<-movie.usa[, -which(names(movie.usa)=='language')]
+movie.usa<-movie.usa[, -which(names(movie.usa)=='movie_imdb_link')]
+movie.usa<-movie.usa[which(movie.usa$genres!= 'Romance'),]
+movie.usa<-movie.usa[which(movie.usa$genres!= 'Musical'),]
+
+mm <- movie.usa
+```
+
+Only keep movie data for the USA, because the “budget” variable was not all converted to US dollars, which might cause a problem in later analysis. 
+
+1. We also removed 45 duplicate rows.
+2. First Genre is the main theme Genre of the movie. 
+3. Remove the ‘movie_imdb_link’ column since it’s not useful for our analysis and store the rest of the data as ‘movie’. 
+4. Remove ‘language’ since after removing all countries except for the USA, there are only 4 languages aside from English. They are not meaningful for our prediction.
+5. We also removed the entries with missing values
+6. All the dollar columns(gross and revenue) were adjusted for inflation with respect to 2016(since 2016 is the highest year in the dataset.
+
+## Check for missing values
+
+```{r echo=FALSE}
+library(Amelia)
+missmap(mm, main = "Missing values vs observed")
+sapply(mm,function(x) sum(is.na(x))) # number of missing values for each variable 
+```
+
+We noticed that there are many missing values for budget, aspect ratio and gross.
+
+## Omit missing values
+
+```{r echo=FALSE}
+movie<-na.omit(mm)
+sapply(movie,function(x) sum(is.na(x))) # double check for missing values
+```
+
+## Visualization of title Year vs. Score
+
+```{r echo=FALSE}
+scatterplot(x=movie$title_year,y=movie$imdb_score)
+```
+
+There are many outliers for title year. The majority of data points are around the year of 2000 and later,which make sense that this is less movies in the early years. Also, an interesting notice is that movies from early years tend to have higher scores. 
+
+## Adjusting for inflation wrt 2016
+
+```{r echo=FALSE}
+movie$gross <- adjust_for_inflation(movie$gross, as.Date(paste(movie$title_year, 1, 1, sep = "-")), "US", to_date = 2016)
+movie$budget <- adjust_for_inflation(movie$budget, as.Date(paste(movie$title_year, 1, 1, sep = "-")), "US", to_date = 2016)
+```
+
+## Visualization of IMDB Score
+
+```{r echo=FALSE}
+max(movie$imdb_score)
+ggplot(movie, aes(x = imdb_score)) +
+        geom_histogram(aes(fill = ..count..), binwidth =0.5) +
+        scale_x_continuous(name = "IMDB Score",
+                           breaks = seq(0,10),
+                           limits=c(1, 10)) +
+        ggtitle("Histogram of Movie IMDB Score") +
+        scale_fill_gradient("Count", low = "blue", high = "red")
+```
+
+## Exploring correlation
+
+```{r echo=FALSE}
+pairs.panels(movie[c('director_name','duration','facenumber_in_poster','imdb_score','genres')])
+```
+
+**Observations:**
+
+1. From the plot, only duration and IMBD score has a high correlation.
+2. Face number in posters has a negative correlation with IMBD score.
+3. Genre has little correlation with score
+4. Interestingly, director name has no correlation with IMDB score
+
+```{r echo=FALSE}
+pairs.panels(movie[c('color','actor_1_name','title_year','imdb_score','aspect_ratio','gross')])
+```
+
+**Observations;**
+
+1. Color and title year has positive correlation.
+2. Color and aspect ratio,gross has smaller positive correlations.
+3. Actor 1 name has very small positive correlation with gross, meaning who plays the movies does not have impact on the gross.
+4. Title year and aspect ratio and color are highly positively correlated.
+5. IMDB score has almost negligible positive correlation with actor 1 name. Which means actor1 does not impact IMDB scores
+6. Interestingly, IMDB score has a negative correlation with title year, which means the old movies seems to have a higher score. The result agrees with our observation from the scatter plot. 
+7. IMDB and aspect ratio has small positive correlation.
+8. IMDB has a strong positive correlation with gross.
+
+
+## Corplot for all numerical variables
+
+```{r echo=FALSE}
+nums<- sapply(movie,is.numeric) # select numeric columns
+movie.num<- movie[,nums]
+corrplot(cor(movie.num),method='ellipse') 
+```
+
+**Observations**
+
+1. Face number in poster has negative correlation with all other predictors.
+2. Cast total facebook likes and actor 1 facebook likes has a stronger positive correlation.
+3. budget and gross have strong correlation which is not surprising.
+4. Interestingly, IMDB scores has strong positive correlation with number of critics for review, which means the more the critics review, the higher the score.Duration and number of voted users also have strong positive correlation with IMDB scores. 
+
+
+**Let's explore the questions we had earlier a little more with visualizations and statistical tests**
+
+# Step 3: Insight Generation 
+
+## 1. Which movies fare better when it comes to ratings, colored movies or black and white movies?
+
+```{r echo=FALSE}
+# Boxplots for significant categorical predictors
+Boxplot(movie$imdb_score,as.character(movie$color))
+x <- movie$imdb_score[which(movie$color == 'Color')]
+y <- movie$imdb_score[which(movie$color != 'Color')]
+wilcox.test(x,y)
+```
+
+**Observations:**
+
+1. The p-value of the test is less than the significance level alpha = 0.05. Therefore we can conclude that the black and white movies have significantly higher ratings colored ones. But we must note that the majority of ratings of B&W movies are old.
+2. Color movies have many outliers. 
+
+## 2. Do some Genres fare better than the others? What are some top performing Genres?
+
+**Boxplot for genre**
+
+```{r echo=FALSE}
+fill <- "Blue"
+line <- "Red"
+ggplot(movie, aes(x = genres, y =imdb_score)) +
+        geom_boxplot(fill = fill, colour = line) +
+        scale_y_continuous(name = "IMDB Score",
+                           breaks = seq(0, 11, 0.5),
+                           limits=c(0, 11)) +
+        scale_x_discrete(name = "Genres") +
+        ggtitle("Boxplot of IMDB Score and Genres")+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+Some top genres that have higher ratings are documentaries and biographies, and least performing genres are fantasy and horror.
+
+```{r echo=FALSE}
+kruskal.test(imdb_score ~ genres, data = movie)
+```
+
+As the p-value is less than the significance level 0.05, we can conclude that there are significant differences between different genres.
+
+
+## 3. Who are some best performing directors? Do the directors consistently deliver better results?
+
+```{r echo=FALSE}
+director_df <- movie %>% group_by(director_name) %>% summarise(imdb_score_avg = mean(imdb_score), count = n())
+hist(director_df$imdb_score_avg) # ratings are pretty varied
+hist(director_df$count) # but most directors have done only 1-2 movies.
+# so take those who have done atleast 5 movies
+
+director_df_top_performers <- director_df[(director_df$count >= 6) & (director_df$imdb_score_avg >= 7),]
+unique(director_df_top_performers$director_name)
+```
+
+**Observations:**
+
+1. Average ratings of the directors is 6.5
+2. Majority of the directors have done 1-2 films
+
+For our analysis, let's take the directors who have done more than 6 movies and have average ratings greater than 7. There are 22 such directors
+
+**Lets check how these directors performed in their careers**
+
+```{r echo=FALSE}
+fill <- "Blue"
+line <- "Red"
+ggplot(movie[which(movie$director_name %in% director_df_top_performers$director_name),], aes(x = director_name, y =imdb_score)) +
+        geom_boxplot(fill = fill, colour = line) +
+        scale_y_continuous(name = "IMDB Score",
+                           breaks = seq(0, 11, 0.5),
+                           limits=c(0, 11)) +
+        scale_x_discrete(name = "Directors") +
+        ggtitle("Boxplot of IMDB Score and Directors") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+**Observations:**
+
+1. clearly the top performing graph 'gravitates' towards Chritopher Nolan. Some other directors in the same league is Quentin. However, except 1-2 bad performing movies most seasoned directors have performed well consistently
+2. David Fincher's movies has had varied rating to his movies
+
+## 4. Does popularity of my cast OR directors at that time impact ratings?
+
+```{r echo=FALSE}
+popularity_df <- movie[c('imdb_score','director_facebook_likes', 'cast_total_facebook_likes')]
+hist(movie$director_facebook_likes) #let's take directors with more than 5k likes as popular
+hist(movie$cast_total_facebook_likes) #let's take actors with more than 3k likes as popular
+
+popularity_df$director_popularity <- ifelse(movie$director_facebook_likes>= 5000, 'Popular', 'Not Popular')
+popularity_df$cast_popularity <- ifelse(movie$cast_total_facebook_likes>= 3000, 'Popular', 'Not Popular')
+
+fill <- "Blue"
+line <- "Red"
+ggplot(popularity_df, aes(x = director_popularity, y =imdb_score)) +
+        geom_boxplot(fill = fill, colour = line) +
+        scale_y_continuous(name = "IMDB Score",
+                           breaks = seq(1.5, 10, 0.5),
+                           limits=c(1.5, 10)) +
+        scale_x_discrete(name = "title_year") +
+        ggtitle("Boxplot of IMDB Score and director_popularity")
+
+kruskal.test(imdb_score ~ director_popularity, data = popularity_df)
+
+fill <- "Blue"
+line <- "Red"
+ggplot(popularity_df, aes(x = cast_popularity, y =imdb_score)) +
+        geom_boxplot(fill = fill, colour = line) +
+        scale_y_continuous(name = "IMDB Score",
+                           breaks = seq(1.5, 10, 0.5),
+                           limits=c(1.5, 10)) +
+        scale_x_discrete(name = "title_year") +
+        ggtitle("Boxplot of IMDB Score and cast_popularity")
+```
+
+**Assumptions:**
+
+1. Let's take directors with more than 5k likes as popular
+2. Let's take actors with more than 3k likes as popular
+
+**Observations:**
+
+1. Popular directors are more important to movie's success.
+2. Actors' popularity does not impact movie ratings much.
+
+
+## 5. Does higher movie rating translate into monetary success?
+
+```{r echo=FALSE}
+plot(movie$imdb_score ~ movie$gross, pch = 19, col = "lightblue")
+abline(lm(movie$imdb_score ~ movie$gross), col = "red", lwd = 3)
+cor(movie$imdb_score, movie$gross)
+```
+
+
+**Observations:**
+
+There seems to be some correlation between movies monetory success and its ratings, but correlations isn't very strong. Might be because of the cluster of movies with low gross. But we can clearly see in the upper portion that many high earning movies had great ratings as well.
+
+
+## 6. Does pumping in more money increase the ROI?
+
+```{r echo=FALSE}
+ROI_df <- movie[c('imdb_score','gross', 'budget')]
+ROI_df$roi <- ROI_df$gross/ROI_df$budget
+boxplot(ROI_df$roi)
+summary(ROI_df$roi)
+Q1 <- quantile(ROI_df$roi, .25)
+Q3 <- quantile(ROI_df$roi, .75)
+IQR <- IQR(ROI_df$roi)
+
+ROI_df <- subset(ROI_df, ROI_df$roi > (Q1 - 1.5*IQR) & ROI_df$roi < (Q3 + 1.5*IQR))
+
+plot(ROI_df$imdb_score ~ ROI_df$roi, pch = 19, col = "lightblue")
+abline(lm(ROI_df$imdb_score ~ ROI_df$roi), col = "red", lwd = 3)
+cor(ROI_df$imdb_score, ROI_df$roi)
+```
+
+There is slight correlation between budget and ROI, but again it's not very strong.
+
+
+# Step 4: Fitting regression model
+
+```{r echo=FALSE}
+movie.sig<-movie[,c('imdb_score','num_voted_users','num_critic_for_reviews','num_user_for_reviews','duration','facenumber_in_poster','gross','movie_facebook_likes','director_facebook_likes','cast_total_facebook_likes','budget','title_year','genres')]
+```
+
+
+## Split data into Test and Train
+
+```{r echo=FALSE}
+indx = sample(1:nrow(movie.sig), as.integer(0.9*nrow(movie.sig)))
+#indx # ramdomize rows, save 90% of data into index
+
+movie_train = movie.sig[indx,]
+movie_test = movie.sig[-indx,]
+```
+
+## Step function to check AIC criteria
+
+```{r echo=FALSE}
+null=lm(movie_train$imdb_score~1) # set null model
+summary(null)
+```
+
+Full model is linear additive model
+
+```{r echo=FALSE}
+full1=lm(movie_train$imdb_score~movie_train$num_voted_users+movie_train$num_critic_for_reviews+movie_train$num_user_for_reviews+movie_train$duration+movie_train$facenumber_in_poster+movie_train$gross+movie_train$movie_facebook_likes+movie_train$director_facebook_likes+movie_train$cast_total_facebook_likes+movie_train$budget+movie_train$title_year+factor(movie_train$genres))
+summary(full1)
+```
+
+**Forward Selection Steps:**
+
+1. Create the null model
+2. Create the full model
+3. Carry out stepwise forward selection using AIC 
+
+```{r echo=FALSE}
+step(null,scope = list(lower=null,upper=full1),direction = 'forward')
+```
+
+lm.fit 1: linear model with dropping insight predictors.
+insignificant terms: 'gross' and 'director_facebook_likes' from summary(full1)
+
+**Running the model after removing insignificant variables**
+
+```{r echo=FALSE}
+lm.fit1<-lm(movie_train$imdb_score~movie_train$num_voted_users + 
+    factor(movie_train$genres) + movie_train$duration + movie_train$budget + 
+    movie_train$num_critic_for_reviews + movie_train$title_year + 
+    movie_train$num_user_for_reviews + movie_train$movie_facebook_likes + 
+    movie_train$facenumber_in_poster + movie_train$cast_total_facebook_likes)
+summary(lm.fit1)
+```
+        
+```{r echo=FALSE}
+residualPlots(lm.fit1)
+```
+
+## Diagnostics
+
+```{r echo=FALSE}
+plot(full1) 
+# residual vs fitted indicates might be higher order term. Normal plot not good.
+```
+
+Residuals are skewed and their variance is not-constant. Also they are normally distributed(left skewed from QQ plot above). Therefore, model is not a good fit. Ideally, polynomial regression should help gather more information in the models it would capture non-linearity in the data. However, we will go ahead with the current model predictions nonetheless and check it's performance.
+
+
+## Check for residual outliers
+
+```{r echo=FALSE}
+library(car)
+qqPlot(full1$residuals,id = 10)
+```
+
+Residuals have significant p-values, therefore, we can drop them.
+Before we drop, let's do some diagnostics to double check which to drop.
+
+```{r echo=FALSE}
+library(car)
+influencePlot(lm.fit1, id.n=10)
+```
+
+- We can see that these 4 observations impact our model significantly. 
+
+From the influence plot, we decided to drop observations:
+
+```{r echo=FALSE}
+# lm.fit2: model based on lm.fit1 removing 4 outliers.
+movie_train<-movie_train[-c(4,1887,1122,2044),]
+
+lm.fit2<-lm(imdb_score~num_voted_users + 
+    factor(genres) + duration + budget + 
+    num_critic_for_reviews + title_year + 
+    num_user_for_reviews + movie_facebook_likes + 
+    facenumber_in_poster + cast_total_facebook_likes,data = movie_train)
+summary(lm.fit2)
+```
+
+
+**Observations:**
+
+Adjusted R^2 is 0.4634, which means 46.34% of the variability can be explained by this model. 
+- All variables are statistically significant
+- We notice that 'Music' genre was the outlier, which has now been removed.
+- Counter intuitive insights :
+        1. budget has negative beta estimate. i.e. higher budget films tend to do worse 
+        2. movie_facebook_likes too has negative estimate
+        3. more the user reviews a movie has, the more negative impact it has on its rating. This maybe due to worse movies gather more discussion around it
+
+
+# Step 5: Hypothesis Testing
+
+## Hypothesis Testing 1
+
+H0: num_critic_for_reviews >= num_user_for_reviews
+H1: num_critic_for_reviews < num_user_for_reveiws
+
+```{r echo=FALSE}
+Hypomat=matrix(c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,-1,0,0,0), nrow=1,byrow=1>0)
+b=c(0)
+linearHypothesis(lm.fit2,Hypomat,b)
+```
+
+P-value : 1.1e-16
+Alpha : 0.05
+
+Hence, P-value < alpha , so we failed to accept the null hypothesis. And we can see that num_critic_for_reviews has less importance than num_user_for_reviews. Reviews from users has more influence on IMDb rating than critic reviews.
+We know from the model that num_user_for_reviews negatively impacts the scores
+
+## Hypothesis Testing 2
+
+H0: num_voted_users >= movie_facebook_likes
+H1: num_voted_users < movie_facebook_likes
+
+```{r echo=FALSE}
+Hypomat=matrix(c(0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,0,0), nrow=1,byrow=1>0)
+b=c(0)
+linearHypothesis(lm.fit2,Hypomat,b)
+```
+
+P-value : 1.5e-10
+Alpha : 0.05
+
+Hence, P-value < alpha , so we failed to accept the null hypothesis. And we can see that num_voted_users has less importance than movie_facebook_likes.Numbers of facebook likes for a movie has more impact on its rating than users vote on IMDb. 
+
+
+```{r echo=FALSE}
+compareCoefs(lm.fit1, lm.fit2)
+```
+
+Removing outliers did not change the result too much.
+
+
+## Diagnostics for lm.fit2
+
+```{r echo=FALSE}
+residualPlots(lm.fit2)
+```
+
+- residuals vs fitted values show some curvature.
+- Variance is non-constant as well
+
+```{r echo=FALSE}
+plot(lm.fit2)
+```
+-Residuals are non-normal
+
+
+Now,let's look at model assumption for both lm.fit1 and lm.fit2:
+
+```{r echo=FALSE}
+# normality
+shapiro.test(lm.fit1$residuals)
+shapiro.test(lm.fit2$residuals)
+```
+
+Both models failed the normality assumption. This can be possible due to the many outliers in the data set. 
+Both models failed the non-constant variance assumption. 
+
+
+# Step 6: Making predictions on the test dataset
+
+```{r echo=FALSE}
+pr<-predict.lm(lm.fit2,newdata = data.frame(movie_test),interval = 'confidence')
+head(pr)
+```
+
+
+## Check Accuracy
+
+Mean Absolute Error: how far, on average, prediction is from the true value.
+
+```{r echo=FALSE}
+MAE <- function(actual, predicted) {
+mean(abs(actual - predicted))
+}
+MAE(pr, movie_test$imdb_score)
+```
+
+
+# Conclusions
+
+1. The most important factor that affects movie rating is the duration. The longer the movie is, the higher the rating will be.
+num_critic_for_reviews is also an important predictor. 
+2. Budget is important, although there is no strong correlation between budget and movie rating.
+3. The number of faces in movie poster has a non-neglectable effect to the movie rating.
+4. Animation and biographies tend to help get better ratings
+
+
+# Attaching all the code as appendix
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
+
+
+
+
+
