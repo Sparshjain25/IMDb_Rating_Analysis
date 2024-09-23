@@ -10,18 +10,18 @@ The data is collected from Wikipedia Hollywood Movies List and IMDb Movie Rating
 • Does an increase in the budget of the movie boost return on investment?  
 
 ### Insights Generation
-• Which movies fare better when it comes to ratings, colored movies or black and white movies?  
-• Does any one Genre far better than the others? What are some top-performing Genres?  
-• Who are some best performing directors? Do the directors consistently deliver better results?  
+• Which movies fare better when it comes to ratings, colored movies or black-and-white movies?  
+• Is any Genre far better than the others? What are some top-performing Genres?  
+• Who are some best-performing directors? Do the directors consistently deliver better results?  
 • Does the popularity of my cast OR directors at that time impact ratings?  
 • Does a higher movie rating translate into monetary success?  
 • Does pumping in more money increase the Return On Investment?
 
 ### Conclusion
 <div style="text-align: justify"> The most important factor that affects movie rating is the duration. The longer the movie is, 
-the higher the rating will be.The number of faces in movie poster has a negative impact on the
+the higher the rating will be. The number of faces in movie poster has a negative impact on the
 movie rating. Instead, focusing and marketing the genre of the movie especially like Biography,
 Documentary or Crime would prove more beneficial.Having higher budget for a movie doesn’t
 necessarily guarantee higher ratings. Therefore, for a given limited budget, it is worth investing
-in a popular and credible directors than famous actors.Studios should encourage more critics to
+in a popular and credible director rather than a famous actor.Studios should encourage more critics to
 review their movies to help with the ratings. </div>
