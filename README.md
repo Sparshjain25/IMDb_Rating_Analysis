@@ -11,7 +11,7 @@ The data is collected from Wikipedia Hollywood Movies List and IMDb Movie Rating
 
 ### Insights Generation
 • Which movies fare better when it comes to ratings, colored movies or black and white movies?  
-• Does any one Genre fare better than the others? What are some top-performing Genres?  
+• Does any one Genre far better than the others? What are some top-performing Genres?  
 • Who are some best performing directors? Do the directors consistently deliver better results?  
 • Does the popularity of my cast OR directors at that time impact ratings?  
 • Does a higher movie rating translate into monetary success?  
